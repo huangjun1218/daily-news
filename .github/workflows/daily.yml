@@ -1,0 +1,43 @@
+name: 每日头条推送
+
+on:
+  schedule:
+    - cron: "30 23 * * *"   # UTC 23:30 = 北京时间 07:30（GitHub 定时任务可能延迟几分钟到半小时）
+  workflow_dispatch:         # 允许在 Actions 页面手动点一次运行
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 抓取并推送
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          RSSHUB_BASE: ${{ vars.RSSHUB_BASE }}
+          REPORT_URL: ${{ vars.REPORT_URL }}
+        run: python news_digest.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: output
+      - uses: actions/deploy-pages@v4
