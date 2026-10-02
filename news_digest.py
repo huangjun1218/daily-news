@@ -41,7 +41,7 @@ MAX_AGE_HOURS = 36  # 只保留最近 36 小时内的新闻（无发布时间的
 
 # ---------------- 抓取 ----------------
 def fetch_source(src):
-    url = src["url"].replace("{RSSHUB}", os.getenv("RSSHUB_BASE", "https://rsshub.app").rstrip("/"))
+    url = src["url"].replace("{RSSHUB}", (os.getenv("RSSHUB_BASE") or "https://rsshub.app").rstrip("/"))
     try:
         r = requests.get(url, headers={"User-Agent": UA}, timeout=20)
         r.raise_for_status()
