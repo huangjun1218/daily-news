@@ -45,10 +45,6 @@
       "name": "金融市场",
       "sources": [
         {
-          "name": "财联社·电报",
-          "type": "cls_telegraph"
-        },
-        {
           "name": "新浪财经·7x24",
           "type": "sina_7x24"
         },
@@ -98,10 +94,6 @@
         {
           "name": "头条热榜",
           "type": "toutiao_hot"
-        },
-        {
-          "name": "知乎热榜",
-          "type": "zhihu_hot"
         }
       ],
       "limit": 12
