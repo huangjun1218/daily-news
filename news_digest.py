@@ -39,8 +39,156 @@ UA = "Mozilla/5.0 (compatible; DailyNewsDigest/1.0)"
 MAX_AGE_HOURS = 36  # 只保留最近 36 小时内的新闻（无发布时间的条目保留）
 
 
+# ---------------- 官方接口直连（热榜、快讯，不依赖 RSSHub） ----------------
+from urllib.parse import quote
+
+
+def get_json(url, referer=None):
+    h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+         "Accept": "application/json, text/plain, */*"}
+    if referer:
+        h["Referer"] = referer
+    r = requests.get(url, headers=h, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
+def clip(text, n=60):
+    text = re.sub(r"<[^>]+>", "", html.unescape(str(text or "")))
+    text = re.sub(r"\s+", " ", text).strip()
+    m = re.match(r"^【([^】]{4,60})】", text)  # 快讯常见的【标题】格式
+    if m:
+        return m.group(1)
+    return text if len(text) <= n else text[:n] + "…"
+
+
+def bj_time(v):
+    try:
+        if isinstance(v, (int, float)) or str(v).isdigit():
+            v = int(v)
+            return datetime.fromtimestamp(v / 1000 if v > 1e11 else v, BJ)
+        return datetime.strptime(str(v)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=BJ)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def api_weibo_hot():
+    d = get_json("https://weibo.com/ajax/side/hotSearch", "https://weibo.com/")
+    out = []
+    for x in d.get("data", {}).get("realtime", []):
+        if x.get("is_ad") or x.get("ad_type"):
+            continue
+        w = x.get("word") or x.get("note")
+        if w:
+            num = x.get("num") or x.get("raw_hot")
+            out.append({"title": w, "link": "https://s.weibo.com/weibo?q=" + quote(f"#{w}#"),
+                        "summary": f"热度 {num}" if num else ""})
+    return out
+
+
+def api_baidu_hot():
+    d = get_json("https://top.baidu.com/api/board?platform=wise&tab=realtime", "https://top.baidu.com/")
+    out, seen = [], set()
+
+    def walk(o):
+        if isinstance(o, dict):
+            w = o.get("word") or o.get("query")
+            if w and isinstance(w, str) and w not in seen and ("url" in o or "rawUrl" in o or "hotScore" in o):
+                seen.add(w)
+                out.append({"title": w, "link": o.get("url") or o.get("rawUrl")
+                            or "https://www.baidu.com/s?wd=" + quote(w), "summary": clip(o.get("desc"), 80)})
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(d.get("data", d))
+    return out
+
+
+def api_toutiao_hot():
+    d = get_json("https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc", "https://www.toutiao.com/")
+    return [{"title": x["Title"], "link": x.get("Url") or "https://www.toutiao.com/", "summary": ""}
+            for x in d.get("data", []) if x.get("Title")]
+
+
+def api_zhihu_hot():
+    d = get_json("https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=50&desktop=true",
+                 "https://www.zhihu.com/hot")
+    out = []
+    for x in d.get("data", []):
+        t = x.get("target", {})
+        if not t.get("title"):
+            continue
+        link = re.sub(r"https?://api\.zhihu\.com/questions/(\d+)", r"https://www.zhihu.com/question/\1", t.get("url", ""))
+        out.append({"title": t["title"], "link": link or "https://www.zhihu.com/hot", "summary": clip(t.get("excerpt"), 80)})
+    return out
+
+
+def api_cls_telegraph():
+    d = get_json("https://www.cls.cn/nodeapi/telegraphList?app=CailianpressWeb&os=web&rn=30&sv=8.4.6",
+                 "https://www.cls.cn/telegraph")
+    out = []
+    for x in d.get("data", {}).get("roll_data", []):
+        title = clip(x.get("title") or x.get("brief") or x.get("content"))
+        if title:
+            out.append({"title": title, "link": f"https://www.cls.cn/detail/{x.get('id')}" if x.get("id")
+                        else "https://www.cls.cn/telegraph", "pub": bj_time(x.get("ctime")), "summary": ""})
+    return out
+
+
+def api_sina_7x24():
+    d = get_json("https://zhibo.sina.com.cn/api/zhibo/feed?zhibo_id=152&page=1&page_size=30",
+                 "https://finance.sina.com.cn/7x24/")
+    lst = d.get("result", {}).get("data", {}).get("feed", {}).get("list", [])
+    out = []
+    for x in lst:
+        title = clip(x.get("rich_text"))
+        if title:
+            out.append({"title": title, "link": x.get("docurl") or "https://finance.sina.com.cn/7x24/",
+                        "pub": bj_time(x.get("create_time")), "summary": ""})
+    return out
+
+
+def api_wallstreetcn():
+    d = get_json("https://api-one-wscn.awtmt.com/apiv1/content/information-flow?channel=global&accept=article&limit=30",
+                 "https://wallstreetcn.com/")
+    out = []
+    for it in d.get("data", {}).get("items", []):
+        r = it.get("resource") or {}
+        if r.get("title"):
+            out.append({"title": clip(r["title"], 80), "link": r.get("uri") or "https://wallstreetcn.com/",
+                        "pub": bj_time(r.get("display_time")), "summary": clip(r.get("content_short"), 80)})
+    return out
+
+
+API_FETCHERS = {
+    "weibo_hot": api_weibo_hot, "baidu_hot": api_baidu_hot, "toutiao_hot": api_toutiao_hot,
+    "zhihu_hot": api_zhihu_hot, "cls_telegraph": api_cls_telegraph, "sina_7x24": api_sina_7x24,
+    "wallstreetcn": api_wallstreetcn,
+}
+
+
+def fetch_api_source(src):
+    fn = API_FETCHERS.get(src["type"])
+    if not fn:
+        return src["name"], [], f"未知类型 {src['type']}"
+    try:
+        raw = fn()
+    except Exception as e:  # noqa: BLE001
+        return src["name"], [], f"{type(e).__name__}: {str(e)[:80]}"
+    if not raw:
+        return src["name"], [], "没有返回条目"
+    items = [{"title": x["title"], "link": x["link"], "pub": x.get("pub"), "summary": x.get("summary", ""),
+              "source": src["name"], "rank": n} for n, x in enumerate(raw)]
+    return src["name"], items, None
+
+
 # ---------------- 抓取 ----------------
 def fetch_source(src):
+    if src.get("type"):
+        return fetch_api_source(src)
     url = src["url"].replace("{RSSHUB}", (os.getenv("RSSHUB_BASE") or "https://rsshub.app").rstrip("/"))
     try:
         r = requests.get(url, headers={"User-Agent": UA}, timeout=20)
@@ -90,9 +238,10 @@ def collect(config):
             pools.append(items)
         # 各源轮流取条目，保证一个分类里不被单一媒体刷屏；热榜保持原排名
         picked, i = [], 0
-        while len(picked) < per and any(i < len(p) for p in pools):
+        limit = int(c.get("limit", per))
+        while len(picked) < limit and any(i < len(p) for p in pools):
             for p in pools:
-                if i < len(p) and len(picked) < per:
+                if i < len(p) and len(picked) < limit:
                     key = norm(p[i]["title"])
                     if key and key not in seen:
                         seen.add(key)

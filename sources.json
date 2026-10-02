@@ -1,5 +1,5 @@
 {
-  "_说明": "每个分类下可以增删源。url 里的 {RSSHUB} 会替换成环境变量 RSSHUB_BASE（默认 https://rsshub.app）。某个源失效时会自动跳过，并在日报末尾列出。",
+  "_说明": "每个分类下可以增删源。普通源填 RSS 地址 url；带 type 的是直接读取官方接口（weibo_hot、baidu_hot、toutiao_hot、zhihu_hot、cls_telegraph、sina_7x24、wallstreetcn）。url 里的 {RSSHUB} 会替换成环境变量 RSSHUB_BASE。分类里可写 limit 单独设置条数。某个源失效时会自动跳过，并在日报末尾列出。",
   "per_category": 8,
   "categories": [
     {
@@ -45,12 +45,16 @@
       "name": "金融市场",
       "sources": [
         {
-          "name": "华尔街见闻·要闻",
-          "url": "{RSSHUB}/wallstreetcn/news/global"
+          "name": "财联社·电报",
+          "type": "cls_telegraph"
         },
         {
-          "name": "财联社·电报",
-          "url": "{RSSHUB}/cls/telegraph"
+          "name": "新浪财经·7x24",
+          "type": "sina_7x24"
+        },
+        {
+          "name": "华尔街见闻",
+          "type": "wallstreetcn"
         }
       ]
     },
@@ -77,10 +81,6 @@
         {
           "name": "中国新闻网·体育",
           "url": "https://www.chinanews.com.cn/rss/sports.xml"
-        },
-        {
-          "name": "虎扑·新闻",
-          "url": "{RSSHUB}/hupu/all/news"
         }
       ]
     },
@@ -89,17 +89,22 @@
       "sources": [
         {
           "name": "微博热搜",
-          "url": "{RSSHUB}/weibo/search/hot"
-        },
-        {
-          "name": "知乎热榜",
-          "url": "{RSSHUB}/zhihu/hot"
+          "type": "weibo_hot"
         },
         {
           "name": "百度热搜",
-          "url": "{RSSHUB}/baidu/top"
+          "type": "baidu_hot"
+        },
+        {
+          "name": "头条热榜",
+          "type": "toutiao_hot"
+        },
+        {
+          "name": "知乎热榜",
+          "type": "zhihu_hot"
         }
-      ]
+      ],
+      "limit": 12
     }
   ]
 }
