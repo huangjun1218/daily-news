@@ -311,6 +311,28 @@ def render_markdown(digest, day, limit=5, url=None):
     return "\n".join(lines)
 
 
+def render_push_html(digest, day, url=None, max_chars=18000):
+    """推送用的精简版：只保留标题和链接，自动控制在 PushPlus 2 万字上限内。"""
+    def build(limit, with_src):
+        parts = [f'<p style="color:#666;font-size:13px">{day:%Y年%m月%d日} 每日头条</p>']
+        for c in digest:
+            if not c["items"]:
+                continue
+            parts.append(f'<h4 style="margin:14px 0 6px;border-left:3px solid #1F5E4E;padding-left:6px">{html.escape(c["name"])}</h4>')
+            for n, it in enumerate(c["items"][:limit], 1):
+                src = f' <span style="color:#999;font-size:12px">{html.escape(it["source"])}</span>' if with_src else ""
+                parts.append(f'<p style="margin:4px 0">{n}. <a href="{html.escape(it["link"])}">{html.escape(it["title"])}</a>{src}</p>')
+        if url:
+            parts.append(f'<p style="margin-top:16px"><a href="{html.escape(url)}">查看完整日报网页 &gt;</a></p>')
+        return "".join(parts)
+
+    for limit, with_src in ((99, True), (99, False), (8, False), (6, False), (5, False), (3, False)):
+        body = build(limit, with_src)
+        if len(body) <= max_chars:
+            return body
+    return body[:max_chars]
+
+
 # ---------------- 推送 ----------------
 def push_all(digest, page, day):
     title = f"每日头条 {day:%m月%d日}"
@@ -328,7 +350,7 @@ def push_all(digest, page, day):
     if tok := os.getenv("PUSHPLUS_TOKEN"):
         def pushplus():
             r = requests.post("https://www.pushplus.plus/send", timeout=20, json={
-                "token": tok, "title": title, "content": page, "template": "html"})
+                "token": tok, "title": title, "content": render_push_html(digest, day, url), "template": "html"})
             r.raise_for_status()
             res = r.json()
             print(f"PushPlus 返回：{res}")
@@ -408,7 +430,8 @@ def main():
         configured = any(os.getenv(k) for k in ("PUSHPLUS_TOKEN", "SERVERCHAN_KEY", "WECOM_WEBHOOK",
                                                  "DINGTALK_WEBHOOK", "TELEGRAM_BOT_TOKEN", "SMTP_HOST"))
         if configured and not sent:
-            sys.exit(2)
+            # 不中断任务，保证网页日报照常更新；在 Actions 页面标出错误提示
+            print("::error::所有推送渠道都失败了，请查看“抓取并推送”步骤的日志")
 
 
 if __name__ == "__main__":
