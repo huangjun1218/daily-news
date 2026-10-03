@@ -326,11 +326,23 @@ def push_all(digest, page, day):
             print(f"[推送失败] {name}: {e}", file=sys.stderr)
 
     if tok := os.getenv("PUSHPLUS_TOKEN"):
-        post("PushPlus", lambda: requests.post("https://www.pushplus.plus/send", timeout=20, json={
-            "token": tok, "title": title, "content": page, "template": "html"}).raise_for_status())
+        def pushplus():
+            r = requests.post("https://www.pushplus.plus/send", timeout=20, json={
+                "token": tok, "title": title, "content": page, "template": "html"})
+            r.raise_for_status()
+            res = r.json()
+            print(f"PushPlus 返回：{res}")
+            if res.get("code") != 200:
+                raise RuntimeError(f"code={res.get('code')} msg={res.get('msg')}")
+        post("PushPlus", pushplus)
     if key := os.getenv("SERVERCHAN_KEY"):
-        post("Server酱", lambda: requests.post(f"https://sctapi.ftqq.com/{key}.send", timeout=20,
-                                               data={"title": title, "desp": md}).raise_for_status())
+        def serverchan():
+            r = requests.post(f"https://sctapi.ftqq.com/{key}.send", timeout=20, data={"title": title, "desp": md})
+            r.raise_for_status()
+            res = r.json()
+            if res.get("code") not in (0, None):
+                raise RuntimeError(f"code={res.get('code')} msg={res.get('message')}")
+        post("Server酱", serverchan)
     if hook := os.getenv("WECOM_WEBHOOK"):
         body = render_markdown(digest, day, limit=3, url=url).encode()[:4000].decode(errors="ignore")
         post("企业微信", lambda: requests.post(hook, timeout=20, json={
@@ -392,7 +404,11 @@ def main():
         sys.exit(1)
     if not args.no_push:
         sent = push_all(digest, page, day)
-        print("已推送：" + ("、".join(sent) if sent else "未配置任何推送渠道"))
+        print("已推送：" + ("、".join(sent) if sent else "无（未配置渠道或全部推送失败，见上方报错）"))
+        configured = any(os.getenv(k) for k in ("PUSHPLUS_TOKEN", "SERVERCHAN_KEY", "WECOM_WEBHOOK",
+                                                 "DINGTALK_WEBHOOK", "TELEGRAM_BOT_TOKEN", "SMTP_HOST"))
+        if configured and not sent:
+            sys.exit(2)
 
 
 if __name__ == "__main__":
